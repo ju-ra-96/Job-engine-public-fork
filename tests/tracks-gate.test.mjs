@@ -113,3 +113,29 @@ test('the gate reads eligibilityText when a provider supplies it', () => {
   const gate = buildTracksGate(normalizeTracks(PROFILE), { remote_fit: 'drop' });
   assert.equal(gate({ title: 'AI Engineer', location: 'Remote', eligibilityText: 'US-based candidates only.' }), 'remote_fit');
 });
+
+test('the gate reads the description when a provider supplies it', () => {
+  const gate = buildTracksGate(normalizeTracks(PROFILE), { remote_fit: 'drop' });
+  assert.equal(gate({ title: 'AI Engineer', location: 'United States', description: 'This role is on-site in our San Francisco office five days a week.' }), 'remote_fit');
+  assert.equal(gate({ title: 'AI Engineer', location: 'Remote', description: 'Open to candidates residing in the United States only.' }), 'remote_fit');
+  assert.equal(gate({ title: 'AI Engineer', location: 'United States', description: 'Fully remote. We hire anywhere in Europe and the Americas.' }), null);
+});
+
+test('remote_fit: strict also drops a place outside Europe with no word on remote work', () => {
+  const tracks = normalizeTracks(PROFILE);
+  const drop = buildTracksGate(tracks, { remote_fit: 'drop' });
+  const strict = buildTracksGate(tracks, { remote_fit: 'strict' });
+  assert.deepEqual(tracksFilterProblems({ remote_fit: 'strict' }), []);
+  for (const location of ['New York, NY', 'United States', 'Toronto, Canada', 'Bengaluru, India']) {
+    const job = { title: 'AI Engineer', location };
+    assert.equal(drop(job), null, location + ' is unknown, so drop keeps it');
+    assert.equal(strict(job), 'remote_fit', location);
+  }
+  assert.equal(strict({ title: 'Operations Manager - Schwerpunkt China', location: 'Bad Neustadt an der Saale' }), null, 'a market named in the title is not a place');
+  for (const location of ['Berlin', 'London, UK', 'Madrid, Spain', 'Zurich, CH', 'Kyiv, Ukraine', 'Istanbul, Turkey', 'Remote', 'Remote (EMEA)', 'Remote - Worldwide', '']) {
+    assert.equal(strict({ title: 'AI Engineer', location }), null, location + ' stays in');
+  }
+  assert.equal(strict(US_ONLY), 'remote_fit', 'strict still drops what drop drops');
+  const hybridUser = normalizeTracks({ ...PROFILE, tracks: { ...PROFILE.tracks, remote: { preference: 'hybrid_ok' } } });
+  assert.equal(buildTracksGate(hybridUser, { remote_fit: 'strict' })({ title: 'AI Engineer', location: 'New York, NY' }), null, 'the inference is for remote-only and remote-first profiles');
+});

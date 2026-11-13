@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseRates, pickGigRate, pickSalary, toDayRate, convertAmount, compareRate, salaryEquivalentDayRate,
-  detectEngagement, parseContractTerms, detectIntermediary, parsePaymentTerms, assessScheinselbstaendigkeit,
+  detectEngagement, parseContractTerms, detectIntermediary, parsePaymentTerms, readTravel, assessScheinselbstaendigkeit,
 } from '../lib/gig-terms.mjs';
 
 const one = text => { const r = parseRates(text); assert.equal(r.length, 1, text); return r[0]; };
@@ -119,4 +119,30 @@ test('Scheinselbstaendigkeit indicators and mitigations', () => {
   assert.equal(safe.risk, 'low');
   assert.ok(safe.mitigations.some(m => m.id === 'deliverable'));
   assert.equal(assessScheinselbstaendigkeit('').risk, 'unknown', 'no text, no assessment');
+});
+
+test('two different start dates are a conflict; the same answer twice is not', () => {
+  const two = parseContractTerms('Start: ab sofort. Laufzeit 6 Monate. Projektstart: 01.01.2027.');
+  assert.equal(two.start, 'ab sofort');
+  assert.equal(two.startConflict, true);
+  assert.deepEqual(two.starts.map(s => s.key), ['asap', '01.01.2027']);
+  assert.equal(parseContractTerms('Start: ASAP. Beginn ab sofort.').startConflict, false);
+  assert.equal(parseContractTerms('Start date: 2027-01-01').startConflict, false);
+  assert.deepEqual(parseContractTerms('').starts, []);
+});
+
+test('a marketplace posting is via platform, and an agency on it stays an agency', () => {
+  const bt = detectIntermediary('OneFlo is hiring a contractor.', 'OneFlo', { url: 'https://app.usebraintrust.com/jobs/18003/' });
+  assert.deepEqual([bt.via, bt.platform], ['platform', 'Braintrust']);
+  const hays = detectIntermediary('Für unseren Kunden aus der Automobilbranche', 'Hays AG', { url: 'https://www.freelancermap.de/projekt/x' });
+  assert.deepEqual([hays.via, hays.platform], ['agency', 'freelancermap']);
+  assert.equal(detectIntermediary('Build agents with us.', 'Acme GmbH', { url: 'https://acme.example/jobs/1' }).via, 'unknown');
+  assert.equal(detectIntermediary('Build agents with us.', 'Acme GmbH', { url: 'not a url' }).via, 'unknown');
+});
+
+test('travel clauses', () => {
+  assert.deepEqual(readTravel('Reisebereitschaft (ca. 20%) wird vorausgesetzt.'), { required: true, percent: 20, evidence: 'Reisebereitschaft (ca. 20%) wird vorausgesetzt.' });
+  assert.equal(readTravel('Up to 25% travel to client sites.').percent, 25);
+  assert.deepEqual([readTravel('Travel is required twice a year for offsites.').required, readTravel('Travel is required twice a year for offsites.').percent], [true, null]);
+  for (const none of ['No travel required.', 'Keine Reisetätigkeit.', 'We are a travel company building booking tools.', '', null]) assert.equal(readTravel(none).required, false, String(none));
 });

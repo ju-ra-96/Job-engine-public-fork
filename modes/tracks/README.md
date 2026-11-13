@@ -25,11 +25,14 @@ gates and before Step 0:
 2. Save the posting text (the same text you archive under "Job Description
    (archived verbatim)") to a file under `jds/` and run:
 
-   node track-signals.mjs jds/{slug}.md --title "{title}" --location "{location}" --company "{company}"
+   node track-signals.mjs jds/{slug}.md --title "{title}" --location "{location}" --company "{company}" --url "{posting url}"
 
    It is zero-token and offline. Its JSON holds, per enabled track, what the
    posting states, the sentence each finding came from, and a `flags` list
-   with a level: `blocker`, `caution` or `info`.
+   with a level: `blocker`, `caution` or `info`. `--url` lets it recognise a
+   marketplace (`freelance.intermediary.via: platform`). It also reports
+   `travel`, `remote.onsiteDaysPerMonth`, `freelance.terms.startConflict` and
+   `freelance.trackerGigSegment` (false means: write no gig segment).
    Put only the posting's own text in that file. Board metadata (tags, category
    labels, your own notes) changes what the reader finds: pass the title,
    location and company through the flags instead.

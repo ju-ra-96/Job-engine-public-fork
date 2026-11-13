@@ -113,3 +113,20 @@ test('helpers', () => {
   assert.ok(findRegions('Remote in EMEA or DACH').some(h => h.id === 'emea'));
   assert.deepEqual(REMOTE_PREFERENCES, ['remote_only', 'remote_first', 'hybrid_ok', 'any']);
 });
+
+test('a stated share gives office days a month and makes the role hybrid', () => {
+  const a = classifyRemoteFit({ title: 'Fullstack Entwickler', location: 'Frankfurt', description: 'Einsatzort: Frankfurt, 40% vor Ort, 60% Remote.' }, HOME);
+  assert.deepEqual([a.arrangement, a.onsiteDaysPerMonth], ['hybrid', 9]);
+  const b = classifyRemoteFit({ title: 'Fullstack Entwickler', location: 'Frankfurt', description: 'Remote: 80%' }, HOME);
+  assert.deepEqual([b.arrangement, b.onsiteDaysPerMonth], ['hybrid', 4]);
+  const c = classifyRemoteFit({ title: 'Engineer', location: 'Munich', description: 'Hybrid, 2 days per week in the office.' }, HOME);
+  assert.equal(c.onsiteDaysPerMonth, 9);
+  const d = classifyRemoteFit({ title: 'Engineer', location: 'Remote, Germany', description: '100% remote.' }, HOME);
+  assert.deepEqual([d.arrangement, d.onsiteDaysPerMonth], ['remote', null]);
+});
+
+test('a place outside Europe with no word on remote work is flagged, and stays unknown', () => {
+  const us = classifyRemoteFit({ title: 'AI Engineer', location: 'New York, NY' }, HOME);
+  assert.deepEqual([us.verdict, us.placeOnlyElsewhere], ['unknown', true]);
+  for (const location of ['Berlin', 'London, UK', 'Remote', '']) assert.equal(classifyRemoteFit({ title: 'AI Engineer', location }, HOME).placeOnlyElsewhere, false, location);
+});

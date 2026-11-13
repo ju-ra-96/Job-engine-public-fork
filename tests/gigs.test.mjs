@@ -53,3 +53,11 @@ test('with no rate configured nothing is judged', () => {
   assert.equal(r.rows[0].againstTarget, 'no_floor');
   assert.equal(listGigs('', normalizeTracks(null)).count, 0);
 });
+
+test('a gig segment on temp-agency employment is reported and not counted', () => {
+  const tracker = TRACKER + '\n| 5 | 2026-11-13 | Westhaus | Fullstack Entwickler | 2.3/5 | Evaluated | ❌ | [5](reports/005-westhaus-2026-11-13.md) | gig: rate n/s, 6 mo, via Westhaus; Arbeitnehmerüberlassung |';
+  const r = listGigs(tracker, normalizeTracks(null));
+  assert.equal(r.count, 3);
+  assert.deepEqual(r.mislabelled, [{ num: 5, company: 'Westhaus', role: 'Fullstack Entwickler' }]);
+  assert.deepEqual(listGigs(TRACKER, normalizeTracks(null)).mislabelled, []);
+});

@@ -38,6 +38,7 @@ const USAGE = [
   'Lists tracker rows whose Notes start with a "gig: {rate}, {length}, {direct | via agency}" segment.',
 ].join('\n');
 
+const EMPLOYMENT_NOTE_RE = /arbeitnehmerüberlassung|\bANÜ\b|temp[- ]agency|fixed[- ]term employment|befristete (?:fest)?anstellung/i;
 const CURRENCIES = { '€': 'EUR', '$': 'USD', '£': 'GBP' };
 const UNITS = [
   [/^(h|hr|hour|std|stunde)$/i, 'hour'],
@@ -91,11 +92,18 @@ export function listGigs(trackerText, tracks) {
   const colmap = resolveColumns(lines);
   const fr = tracks.freelance;
   const rows = [];
+  const mislabelled = [];
   for (const line of lines) {
     const row = parseTrackerRow(line, colmap);
     if (!row) continue;
     const gig = parseGigNote(row.notes);
     if (!gig) continue;
+    // A gig segment on temp-agency or fixed-term employment is a labelling slip:
+    // report the row, but keep it out of the gig figures.
+    if (EMPLOYMENT_NOTE_RE.test(row.notes)) {
+      mislabelled.push({ num: row.num, company: row.company, role: row.role });
+      continue;
+    }
     const day = gig.rate ? toDayRate(gig.rate, { hoursPerDay: fr.hoursPerDay, billableDaysPerYear: fr.billableDaysPerYear }) : null;
     const dayRate = day ? { min: Math.round(day.min), max: Math.round(day.max), currency: gig.rate.currency } : null;
     // Days per month from the user's own billable days, so a 6-month contract
@@ -127,11 +135,13 @@ export function listGigs(trackerText, tracks) {
     target: fr.dayRate,
     assumptions: { hoursPerDay: fr.hoursPerDay, billableDaysPerYear: fr.billableDaysPerYear },
     rows,
+    mislabelled,
   };
 }
 
 function summary(result) {
-  if (!result.count) return 'No gig rows. A gig row is a tracker row whose Notes start with "gig: {rate}, {length}, {direct | via agency}".';
+  const slip = result.mislabelled?.length ? '\n\nNot counted: ' + result.mislabelled.map(r => '#' + r.num + ' ' + r.company).join(', ') + ' carry a gig: segment but are employment (temp agency or fixed term). Remove the segment from their Notes.' : '';
+  if (!result.count) return 'No gig rows. A gig row is a tracker row whose Notes start with "gig: {rate}, {length}, {direct | via agency}".' + slip;
   const money = v => (v ? (v.min === v.max ? String(v.min) : v.min + '-' + v.max) + ' ' + v.currency : 'n/s');
   const out = ['Gigs in the tracker: ' + result.count + ' (' + Object.entries(result.byStatus).map(([k, v]) => k + ' ' + v).join(', ') + ')', ''];
   out.push('| # | Company | Role | Status | Day rate | Length | Contract value | Via | vs target |');
@@ -140,7 +150,7 @@ function summary(result) {
     out.push('| ' + [r.num, r.company, r.role, r.status, money(r.dayRate), r.months ? r.months + ' mo' : 'n/s', r.contractValue ? '~' + money(r.contractValue) : 'n/s', r.via || (r.direct ? 'direct' : 'n/s'), r.againstTarget].join(' | ') + ' |');
   }
   out.push('', 'Day rates assume ' + result.assumptions.hoursPerDay + ' h/day; contract values assume ' + result.assumptions.billableDaysPerYear + ' billable days a year.');
-  return out.join('\n');
+  return out.join('\n') + slip;
 }
 
 function selfTest() {
@@ -177,6 +187,6 @@ if (isMainModule(import.meta.url)) {
   const trackerPath = resolveTrackerPath(getCareerOpsRoot());
   const result = existsSync(trackerPath)
     ? listGigs(readFileSync(trackerPath, 'utf-8'), loadTracks(getProfilePath()))
-    : { count: 0, byStatus: {}, rows: [], target: null, assumptions: null };
+    : { count: 0, byStatus: {}, rows: [], mislabelled: [], target: null, assumptions: null };
   console.log(hasFlag(args, '--summary') ? summary(result) : JSON.stringify(result, null, 2));
 }

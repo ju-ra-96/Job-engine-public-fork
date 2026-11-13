@@ -23,14 +23,14 @@ import { assessWorkAuthorization, compareLanguages, detectPostingLanguage, readL
 import { classifyAiRole } from './lib/ai-archetypes.mjs';
 import {
   assessScheinselbstaendigkeit, compareRate, detectEngagement, detectIntermediary, parseContractTerms,
-  parsePaymentTerms, parseRates, pickGigRate, pickSalary, salaryEquivalentDayRate, toDayRate,
+  parsePaymentTerms, parseRates, pickGigRate, pickSalary, readTravel, salaryEquivalentDayRate, toDayRate,
 } from './lib/gig-terms.mjs';
 
-const KNOWN_FLAGS = ['--title', '--location', '--company', '--profile', '--summary', '--self-test', '--help', '-h'];
-const VALUE_FLAGS = ['--title', '--location', '--company', '--profile'];
+const KNOWN_FLAGS = ['--title', '--location', '--company', '--url', '--profile', '--summary', '--self-test', '--help', '-h'];
+const VALUE_FLAGS = ['--title', '--location', '--company', '--url', '--profile'];
 const USAGE = [
   'Usage:',
-  '  node track-signals.mjs <posting-file | -> [--title T] [--location L] [--company C] [--summary]',
+  '  node track-signals.mjs <posting-file | -> [--title T] [--location L] [--company C] [--url U] [--summary]',
   '  node track-signals.mjs --self-test',
   '',
   'Reads the posting text from a file (or stdin with -) and prints what the enabled',
@@ -58,6 +58,10 @@ export function trackSignals(posting, tracks) {
     out.remote = remote;
     const level = remote.verdict === 'mismatch' ? 'blocker' : remote.verdict === 'partial' ? 'caution' : 'info';
     for (const reason of remote.reasons) flag(level, 'remote', reason);
+    if (remote.onsiteDaysPerMonth !== null && remote.arrangement === 'hybrid') flag('info', 'remote', 'About ' + remote.onsiteDaysPerMonth + ' office days a month on the stated share or schedule.');
+    const travel = readTravel(description);
+    out.travel = travel;
+    if (travel.required) flag(['remote_only', 'remote_first'].includes(tracks.remote.preference) ? 'caution' : 'info', 'remote', 'Travel is expected' + (travel.percent ? ' (' + travel.percent + '%)' : '') + ': "' + travel.evidence + '". Ask how often and where.');
   }
 
   if (tracks.enabled.europe) {
@@ -108,7 +112,9 @@ export function trackSignals(posting, tracks) {
       rate,
       rateVerdict: compareRate(rate, fr.dayRate, opts),
       terms,
-      intermediary: detectIntermediary(description, posting.company || ''),
+      intermediary: detectIntermediary(description, posting.company || '', { url: posting.url || '' }),
+      // The tracker's gig: Notes segment is for engagements the candidate invoices.
+      trackerGigSegment: isGig,
       payment: parsePaymentTerms(description),
       scheinselbstaendigkeit: isGig && fr.checkScheinselbstaendigkeit
         ? assessScheinselbstaendigkeit(description, { months: terms.months ? terms.months.max : null, utilisationPercent: terms.utilisation ? terms.utilisation.percent : null })
@@ -116,6 +122,7 @@ export function trackSignals(posting, tracks) {
       salaryAsDayRate: !isGig && salary ? { perWorkingDay: toDayRate(salary, { billableDaysPerYear: 220 }), freelanceEquivalent: salary.unit === 'year' ? salaryEquivalentDayRate(salary.max, { billableDaysPerYear: fr.billableDaysPerYear }) : null, currency: salary.currency } : null,
     };
     if (fr.mode === 'only' && !isGig && engagement.type !== 'unknown') flag('blocker', 'freelance', 'This is ' + engagement.type.replace('_', ' ') + ', and tracks.freelance.mode is "only".');
+    if (engagement.type === 'temp_agency' || engagement.type === 'fixed_term') flag('info', 'freelance', 'This is ' + (engagement.type === 'temp_agency' ? 'temp-agency employment' : 'fixed-term employment') + ', not a freelance engagement: evaluate it as employment and write no gig: segment in the tracker.');
     if (isGig) {
       const f = out.freelance;
       if (!rate) flag('info', 'freelance', 'No rate stated. Ask for the budget before investing in a proposal.');
@@ -124,6 +131,8 @@ export function trackSignals(posting, tracks) {
       if (terms.months && fr.minContractMonths && terms.months.max < fr.minContractMonths) flag('caution', 'freelance', 'Runs ' + terms.months.max + ' months at most, below your minimum of ' + fr.minContractMonths + '.');
       if (!terms.months) flag('info', 'freelance', 'No contract length stated.');
       if (f.payment.days && fr.maxPaymentTermsDays && f.payment.days > fr.maxPaymentTermsDays) flag('caution', 'freelance', 'Payment terms of ' + f.payment.days + ' days exceed your limit of ' + fr.maxPaymentTermsDays + '.');
+      if (terms.startConflict) flag('info', 'freelance', 'The posting gives two start dates (' + terms.starts.map(x => x.raw).join(' and ') + '). Ask which one holds.');
+      if (f.intermediary.via === 'platform') flag('info', 'freelance', 'Posted on ' + f.intermediary.platform + ': the platform sits between you and the client, so its fee, payment route and terms apply.');
       if (f.intermediary.via === 'agency') flag(fr.acceptAgencies ? 'info' : 'caution', 'freelance', 'Sold through an intermediary (' + f.intermediary.evidence.join('; ') + '): the end client, the margin and the contract chain are open questions.');
       if (f.scheinselbstaendigkeit && f.scheinselbstaendigkeit.risk === 'high') flag('caution', 'freelance', 'High Scheinselbstaendigkeit risk on the wording: ' + f.scheinselbstaendigkeit.indicators.map(i => i.label.toLowerCase()).join('; ') + '.');
       else if (f.scheinselbstaendigkeit && f.scheinselbstaendigkeit.risk === 'elevated') flag('info', 'freelance', 'Scheinselbstaendigkeit indicators to clarify: ' + f.scheinselbstaendigkeit.indicators.map(i => i.label.toLowerCase()).join('; ') + '.');
@@ -206,7 +215,7 @@ function main(argv) {
   const tracks = loadTracks(flagValue(argv, '--profile') || getProfilePath());
   for (const w of tracks.warnings) console.error('track-signals: ' + w);
   const result = trackSignals({
-    title: flagValue(argv, '--title') || '', location: flagValue(argv, '--location') || '', company: flagValue(argv, '--company') || '', description,
+    title: flagValue(argv, '--title') || '', location: flagValue(argv, '--location') || '', company: flagValue(argv, '--company') || '', url: flagValue(argv, '--url') || '', description,
   }, tracks);
   console.log(hasFlag(argv, '--summary') ? summarize(result) : JSON.stringify(result, null, 2));
 }

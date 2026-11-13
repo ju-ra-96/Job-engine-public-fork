@@ -69,4 +69,5 @@ region: "Which hours of overlap do you expect with {their zone}?"
 
 `tracks_filter.remote_fit: drop` in `portals.yml` drops postings with a stated
 mismatch before they reach the pipeline, using the same reader. Postings that
-do not say stay in. See `docs/TRACKS.md`.
+do not say stay in. `remote_fit: strict` also drops a posting whose only place
+is outside Europe and which has no word on remote work. See `docs/TRACKS.md`.

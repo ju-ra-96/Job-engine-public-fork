@@ -90,7 +90,7 @@ preference. Without the block the scan is unchanged.
 
 ```yaml
 tracks_filter:
-  remote_fit: drop        # drop | off
+  remote_fit: drop        # drop | strict | off
   engagement: any         # any | freelance_only | employment_only
 ```
 
@@ -99,11 +99,19 @@ tracks_filter:
   required far time zone, or on-site against a remote preference. A posting
   that does not say stays in. A city with no word on remote work is "unknown",
   not a mismatch; narrow by place with the existing `location_filter`.
+- `remote_fit: strict` does what `drop` does and adds one inference, for a
+  remote-only or remote-first profile: a posting whose only named place is
+  outside Europe and which has no word on remote work ("New York, NY",
+  "United States", "Bengaluru, India") is dropped too. It is on-site there or
+  remote for that region only. European places and postings with no place stay
+  in.
 - `engagement` keeps only freelance work or only employment, again only on a
   stated type.
 - Dropped postings are counted on the summary line "Filtered by tracks".
-- Most providers hand the scanner a title and a location only, so the filter
-  mostly reads those two. The full check happens in the evaluation.
+- The filter reads the title, the location and, when the provider supplies
+  them, the description and the source's own eligibility text. Most providers
+  hand the scanner a title and a location only, so the filter mostly reads
+  those two. The full check happens in the evaluation.
 
 ## In the evaluation
 
@@ -111,7 +119,7 @@ When the profile has a `tracks:` block, `oferta`, the pipeline and batch
 workers read `modes/tracks/README.md` and run
 
 ```bash
-node track-signals.mjs jds/acme.md --title "AI Engineer" --location "Remote (EMEA)" --company "Acme"
+node track-signals.mjs jds/acme.md --title "AI Engineer" --location "Remote (EMEA)" --company "Acme" --url "https://example.com/jobs/1"
 ```
 
 It is offline and uses no model. It prints, per enabled track, what the posting
@@ -119,6 +127,12 @@ states, the sentence each finding came from, and flags at three levels:
 `blocker`, `caution`, `info`. The agent checks each finding against the posting
 and quotes the posting in the report. The reader is conservative: wording it
 does not recognise comes back as "unknown", never as a pass or a fail.
+
+Beside the track verdicts it reports: office days a month for a hybrid role
+(from "2 days a week" or from a share such as "40% vor Ort"), a travel clause
+with its share when one is stated, two different start dates in one posting,
+and, from `--url`, a marketplace that sits between client and freelancer
+(`intermediary.via: platform`).
 
 In the report, the tracks add rows to Block A (remote fit, work authorization,
 languages, engagement, AI archetype), a flag line at the top of Block B for
@@ -141,7 +155,9 @@ The tracker keeps its columns and states. A gig row starts its Notes with
 gig: 850 EUR/day, 6 mo, via Hays; ...
 ```
 
-and `node gigs.mjs --summary` lists those rows with the day rate, the contract
+Temp-agency and fixed-term employment get no gig segment; a row whose Notes
+carry both is listed as mislabelled and kept out of the gig figures.
+`node gigs.mjs --summary` lists the gig rows with the day rate, the contract
 value the length implies, the agency, and the rate against your target.
 
 ## Sources per track

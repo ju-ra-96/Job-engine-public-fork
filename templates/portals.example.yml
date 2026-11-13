@@ -479,6 +479,9 @@
 #   remote_fit: drop  removes postings that are remote for another region only,
 #                     require a far time zone, or are on-site against a remote
 #                     preference. Needs tracks.remote.preference.
+#   remote_fit: strict  the same, and also drops a posting whose only place is
+#                     outside Europe with no word on remote work ("New York,
+#                     NY"), for a remote-only or remote-first profile.
 #   engagement        any | freelance_only | employment_only
 #
 # tracks_filter:
